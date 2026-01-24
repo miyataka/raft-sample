@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	pb "github.com/taka/raft-sample/proto"
 )
 
 // Node は Raft ノードを表します。
@@ -79,7 +81,14 @@ func (n *Node) Stop() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	close(n.stopCh)
+	// 二重クローズを防ぐ
+	select {
+	case <-n.stopCh:
+		// 既に閉じられている
+		return
+	default:
+		close(n.stopCh)
+	}
 
 	if n.electionTimer != nil {
 		n.electionTimer.Stop()
@@ -249,8 +258,43 @@ func (n *Node) becomeLeader() {
 func (n *Node) startElection() <-chan bool {
 	voteCh := make(chan bool, len(n.config.Peers))
 
-	// TODO: 各ピアに RequestVote RPC を送信
-	// 現時点ではモック実装
+	if n.transport == nil {
+		return voteCh
+	}
+
+	n.mu.RLock()
+	req := &pb.RequestVoteRequest{
+		Term:         int64(n.state.GetTerm()),
+		CandidateId:  n.config.ID,
+		LastLogIndex: int64(n.state.Persistent.Log.LastIndex()),
+		LastLogTerm:  int64(n.state.Persistent.Log.LastTerm()),
+	}
+	peers := n.config.Peers
+	n.mu.RUnlock()
+
+	// 各ピアに並行して RequestVote RPC を送信
+	for _, peer := range peers {
+		go func(peer string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+
+			resp, err := n.transport.SendRequestVote(ctx, peer, req)
+			if err != nil {
+				n.logger.Printf("[%s] RequestVote to %s failed: %v", n.config.ID, peer, err)
+				voteCh <- false
+				return
+			}
+
+			// より高い任期を発見した場合、フォロワーに降格
+			if resp.Term > int64(n.state.GetTerm()) {
+				n.StepDown(int(resp.Term))
+				voteCh <- false
+				return
+			}
+
+			voteCh <- resp.VoteGranted
+		}(peer)
+	}
 
 	return voteCh
 }
