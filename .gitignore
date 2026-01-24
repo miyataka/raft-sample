@@ -1,0 +1,11 @@
+# Binaries
+raft-sample
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Test coverage
+coverage.out
