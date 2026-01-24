@@ -27,6 +27,12 @@ type Node struct {
 	resetCh    chan struct{} // 選挙タイマーリセット用
 	stepDownCh chan struct{} // リーダーからフォロワーへの降格通知
 
+	// 通信層
+	transport Transport
+
+	// ステートマシンへの適用関数
+	applyFunc ApplyFunc
+
 	// ロガー
 	logger *log.Logger
 }
@@ -247,12 +253,6 @@ func (n *Node) startElection() <-chan bool {
 	// 現時点ではモック実装
 
 	return voteCh
-}
-
-// sendHeartbeats は全てのフォロワーにハートビートを送信します。
-func (n *Node) sendHeartbeats() {
-	// TODO: 各ピアに AppendEntries RPC (空のエントリ) を送信
-	n.logger.Printf("[%s] sending heartbeats", n.config.ID)
 }
 
 // ResetElectionTimer は選挙タイマーをリセットします。
