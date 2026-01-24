@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package raft;
+
+option go_package = "github.com/taka/raft-sample/proto";
+
+// Raft サービス定義
+service Raft {
+    // RequestVote は候補者がフォロワーに投票を要求するRPC
+    rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse);
+
+    // AppendEntries はリーダーがログエントリを複製するRPC
+    // ハートビートとしても使用される（エントリが空の場合）
+    rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+}
+
+// RequestVoteRequest は投票要求のメッセージ
+message RequestVoteRequest {
+    // 候補者の任期
+    int64 term = 1;
+
+    // 投票を要求している候補者のID
+    string candidate_id = 2;
+
+    // 候補者の最後のログエントリのインデックス
+    int64 last_log_index = 3;
+
+    // 候補者の最後のログエントリの任期
+    int64 last_log_term = 4;
+}
+
+// RequestVoteResponse は投票要求への応答
+message RequestVoteResponse {
+    // 現在の任期（候補者が自身を更新するため）
+    int64 term = 1;
+
+    // 候補者が投票を獲得した場合 true
+    bool vote_granted = 2;
+}
+
+// LogEntry は複製されるログエントリ
+message LogEntry {
+    // エントリの任期
+    int64 term = 1;
+
+    // ログ内のインデックス
+    int64 index = 2;
+
+    // ステートマシンに適用されるコマンド
+    bytes command = 3;
+}
+
+// AppendEntriesRequest はログ複製/ハートビートのメッセージ
+message AppendEntriesRequest {
+    // リーダーの任期
+    int64 term = 1;
+
+    // リーダーのID（フォロワーがクライアントをリダイレクトするため）
+    string leader_id = 2;
+
+    // 新しいエントリの直前のログインデックス
+    int64 prev_log_index = 3;
+
+    // prevLogIndex のエントリの任期
+    int64 prev_log_term = 4;
+
+    // 保存するログエントリ（ハートビートの場合は空）
+    repeated LogEntry entries = 5;
+
+    // リーダーのコミットインデックス
+    int64 leader_commit = 6;
+}
+
+// AppendEntriesResponse はログ複製への応答
+message AppendEntriesResponse {
+    // 現在の任期（リーダーが自身を更新するため）
+    int64 term = 1;
+
+    // フォロワーが prevLogIndex と prevLogTerm に一致するエントリを持っていた場合 true
+    bool success = 2;
+
+    // 競合が発生した場合、フォロワーの最後のログインデックス
+    // （最適化: リーダーが nextIndex をより効率的に更新するため）
+    int64 conflict_index = 3;
+
+    // 競合が発生したエントリの任期
+    int64 conflict_term = 4;
+}
